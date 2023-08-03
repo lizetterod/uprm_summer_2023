@@ -5,7 +5,7 @@
 #include "Move axis.h"
 #include <stdio.h> 
 #include <math.h>
-
+//include <winuser.h>
 
 #define MAX_LOADSTRING 100
 
@@ -333,8 +333,10 @@ INT_PTR CALLBACK MoveMotorsDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARA
     UNREFERENCED_PARAMETER(lParam);
     HWND           hText;
     static int     Distance, Velocity, Motor;
-    char           strValue[10];
-    char            txBuffer[128] = { 0 }, rxBuffer[128] = { 0 };
+    float          Position;
+    char           strValue[10], szBuffer[BUFSIZ];;
+    char           txBuffer[128] = { 0 }, rxBuffer[128] = { 0 };
+    int            nRecByte, Steps;
 
     switch (message)
     {
@@ -348,7 +350,41 @@ INT_PTR CALLBACK MoveMotorsDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARA
         PosComPort.StopBits = 0;
 
         return (INT_PTR)TRUE;
+    case WM_TIMER:
+        KillTimer(hDlg, TIMER_MILSEC1);
+        nRecByte = ReadCom(rxBuffer, 1);
+        if (!strcmp(rxBuffer, "^") )  // VMX program has finishes?
+        {       
+            
+            if (Motor==1)
+                sprintf(txBuffer, "X");
+            else if (Motor == 2)
+                    sprintf(txBuffer, "Y");
+                 else if (Motor == 3)
+                    sprintf(txBuffer, "Z");
+                 else
+                    sprintf(txBuffer, "T");
 
+            WriteCom(txBuffer, strlen(txBuffer));
+            Sleep(100);
+
+            nRecByte = ReadCom(rxBuffer, 10);
+            Steps = atoi(rxBuffer);
+            sprintf(szBuffer, "%d", Steps);
+            SetDlgItemText(hDlg, IDC_STEPS, szBuffer);
+
+            Position = Steps*0.005;
+            sprintf(szBuffer, "%.3lf", Position);
+            SetDlgItemText(hDlg, IDC_POSITION, szBuffer);
+            CloseCom();
+        }
+        else 
+        {
+
+            Sleep(100);
+            SetTimer(hDlg, TIMER_MILSEC1, 200, NULL);
+        }
+        return (INT_PTR)TRUE;
     case WM_COMMAND:
         // get and verify TRM address
         hText = GetDlgItem(hDlg, IDC_DISTANCE);
@@ -380,7 +416,7 @@ INT_PTR CALLBACK MoveMotorsDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARA
             Motor = 1;
         }
 
-
+        switch (LOWORD(wParam))
         {
         case IDC_Negative:
            
@@ -389,23 +425,27 @@ INT_PTR CALLBACK MoveMotorsDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARA
             //MotorSteps = round(ElementPosition / 0.005);
             //ProbePosition = MotorSteps * 0.005;
             if (OpenCom(PosComPort)) {                   // port is valid?
-                sprintf(txBuffer, "E,C,S%dM%d,I%d-M%d,R", Motor, Velocity, Motor, Distance);  //I1M-0
+                sprintf(txBuffer, "F,C,S%dM%d,I%d-M%d,R", Motor, Velocity, Motor, Distance); 
+                //sprintf(txBuffer, "F,C,S%dM%d,I%dM-0,IA%dM-0,I%dM%d, R", Motor, Velocity, Motor, Motor, Motor, Distance);
+
+
                 printf("%s\n", txBuffer);
                 WriteCom(txBuffer, strlen(txBuffer));
                 Sleep(100);
-                CloseCom();
+                //CloseCom();
+                SetTimer(hDlg, TIMER_MILSEC1, 200, NULL);
             }
-
             return FALSE;
         case IDC_Positive:
             if (OpenCom(PosComPort)) {                   // port is valid?
-                sprintf(txBuffer, "E,C,S%dM%d,I%dM%d,R", Motor, Velocity, Motor, Distance);  //I1M-0
+                sprintf(txBuffer, "F,C,S%dM%d,I%dM%d,R", Motor, Velocity, Motor, Distance);  
                 printf("%s\n", txBuffer);
                 WriteCom(txBuffer, strlen(txBuffer));
                 Sleep(100);
-                CloseCom();
+                //CloseCom();
+                SetTimer(hDlg, TIMER_MILSEC1, 200, NULL);
             }
-       
+            return FALSE;
         case IDC_Origin:
 
 
@@ -413,13 +453,16 @@ INT_PTR CALLBACK MoveMotorsDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARA
             //MotorSteps = round(ElementPosition / 0.005);
             //ProbePosition = MotorSteps * 0.005;
             if (OpenCom(PosComPort)) {                   // port is valid?
-                sprintf(txBuffer, "E,C,S%dM%d,I%d-M0,R", Motor, Velocity, Motor);  //I1M-0
+                //sprintf(txBuffer, "F,C,S%dM%d,I%d-M0,R", Motor, Velocity, Motor);  //I1M-0
+                sprintf(txBuffer, "F,C,S%dM%d,I%dM-0,IA%dM-0, R", Motor, Velocity, Motor, Motor);
+
                 printf("%s\n", txBuffer);
                 WriteCom(txBuffer, strlen(txBuffer));
                 Sleep(100);
-                CloseCom();
-            }
+                //CloseCom();
+                SetTimer(hDlg, TIMER_MILSEC1, 200, NULL);
 
+            }
             return FALSE;
 
         case IDCANCEL:

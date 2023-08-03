@@ -32,7 +32,7 @@
 #define IDC_Origin		    32014
 #define IDM_Options		    32015
 #define IDD_STARTSETUPBOX   32016
-#define IDC_MOTDIST         32017
+#define IDC_MOTDISTx         32017
 #define IDC_MOTDISTy        32018
 #define IDC_THETAX          32019
 #define IDC_THETAY          32020
@@ -45,9 +45,21 @@
 #define IDC_POINTSB         32027
 #define IDC_DATAA           32028
 #define IDC_DATAB           32029
+#define IDC_Probex          32030
+#define IDC_Probey          32031
+#define IDC_DELTAA          32032
+#define IDC_DELTAB          32033
+#define IDC_UNITSCOMBO      32034
+#define IDC_Freq            32035
+#define IDC_FINDMAXANGLE    32036
+#define IDC_FINDSAMPLINGPAR 32037
+#define IDC_FIXNUMBERPOINTS 32038
+#define IDC_FIXDELTA		32039
+#define IDC_STEPS			32039
+#define IDC_POSITION		32040
 
-
-
+#define TIMER_MILSEC1		40000
+#define TIMER_MILSEC2		40002
 
 
 #ifndef IDC_STATIC
