@@ -4,6 +4,7 @@
 #include "framework.h"
 #include "Move axis.h"
 #include <stdio.h> 
+#include <math.h>
 
 
 #define MAX_LOADSTRING 100
@@ -40,6 +41,8 @@ BOOL InitComPortList(HWND hwndDlg, int indCombo);
 BOOL GetHardwareInfoFromFile(HWND hDlg, const char* szFileName);
 INT_PTR CALLBACK MoveMotorsDialBox(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK STARTSETUPDialBox(HWND, UINT,WPARAM, LPARAM );
+BOOL InitUNITSCOMBOList(HWND hwndDlg, int indCombo);
+BOOL isNumber(const char* str);
 
 // function defined in communication.c
 void ExitOnError(const char* message);
@@ -528,25 +531,408 @@ int ReadCom(char* buf, int len)
 INT_PTR CALLBACK STARTSETUPDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     UNREFERENCED_PARAMETER(lParam);
-
+    char szBuffer[BUFSIZ];
+    static float Dx, Dy, thetax, thetay, zp, a, b, centerx, centery, Mx, My, Value, px, py, f_GHz, dx, dy, Lambda, Probex, Probey, ProbetoAUTdis;
+    static double pi = 3.1410926536210386;
+    static double c = 299792458;
+    int             TextLength;
+    HWND           hText;
+    static BOOL        FIXDELTA=true;
     switch (message)
     {
     case WM_INITDIALOG:
+        // Initialize the positioner drop-down list box. 
+        InitUNITSCOMBOList(hDlg, IDC_UNITSCOMBO);
         // Select the first COM port.
-        SendDlgItemMessage(hDlg, IDC_POSPORTCOMBO, CB_SETCURSEL, 0, 0);
+        SendDlgItemMessage(hDlg, IDC_UNITSCOMBO, CB_SETCURSEL, 0, 0);
 
-        //// open harware file and Initialize the com port and instrument address
-        //GetHardwareInfoFromFile(hDlg, "hardware.txt");
-        //item = (int)g_Hardware.PositionerPort[3] - 48;
+        // open harware file and Initialize the com port and instrument address
+        Dx = 200;
+        Dy = 200;
+        thetax = 60;
+        thetay = 60;
+        zp = 90;
+        px = 22.86;
+        py = 10.16;
+        f_GHz = 10;
+        
+        sprintf(szBuffer, "%.2lf", Dx);
+        SetDlgItemText(hDlg, IDC_MOTDISTx, szBuffer);
+        sprintf(szBuffer, "%.2lf", Dy);
+        SetDlgItemText(hDlg, IDC_MOTDISTy, szBuffer);
+        sprintf(szBuffer, "%.2lf", thetax);
+        SetDlgItemText(hDlg, IDC_THETAX, szBuffer);
+        sprintf(szBuffer, "%.2lf", thetay);
+        SetDlgItemText(hDlg, IDC_THETAY, szBuffer);
+        sprintf(szBuffer, "%.2lf", zp);
+        SetDlgItemText(hDlg, IDC_AUTDIS, szBuffer);
+        sprintf(szBuffer, "%.2lf", f_GHz);
+        SetDlgItemText(hDlg, IDC_Freq, szBuffer);
+        sprintf(szBuffer, "%.2lf", px);
+        SetDlgItemText(hDlg, IDC_Probex, szBuffer);
+        sprintf(szBuffer, "%.2lf", py);
+        SetDlgItemText(hDlg, IDC_Probey, szBuffer);
+        
+        a = Dx +px+ 2 * zp * tan(thetax*pi/180);
+        sprintf(szBuffer, "%.2lf", a);
+        SetDlgItemText(hDlg, IDC_SPANA, szBuffer);
 
+        b = Dy +py+ 2 * zp * tan(thetay * pi / 180);
+        sprintf(szBuffer, "%.2lf", b);
+        SetDlgItemText(hDlg, IDC_SPANB, szBuffer);
+
+         Lambda = c/(f_GHz*(1e9));
+
+         dx = (Lambda / 2) * 1000;
+         sprintf(szBuffer, "%.2lf", dx);
+         SetDlgItemText(hDlg, IDC_DELTAA, szBuffer);
+        
+         dy = (Lambda / 2) * 1000;
+         sprintf(szBuffer, "%.2lf", dy);
+         SetDlgItemText(hDlg, IDC_DELTAB, szBuffer);
+
+         // 1) find number of points and display the values
+         Mx = 1 + int(0.5 + a / dx);
+         sprintf(szBuffer, "%.2lf", Mx);
+         SetDlgItemText(hDlg, IDC_POINTSA, szBuffer);
+         // 
+         My = 1 + int(0.5 + b / dy);
+         sprintf(szBuffer, "%.2lf", My);
+         SetDlgItemText(hDlg, IDC_POINTSB, szBuffer);
+
+         EnableWindow(GetDlgItem(hDlg, IDC_DELTAA), false);
+         EnableWindow(GetDlgItem(hDlg, IDC_DELTAB), false);
+         EnableWindow(GetDlgItem(hDlg, IDC_FIXDELTA), false);
+         FIXDELTA = true;
         //SendDlgItemMessage(hDlg, IDC_POSPORTCOMBO, CB_SETCURSEL, item, 0);
         ////SetDlgItemText(hDlg, IDC_INSTRUMENADD, g_Hardware.rsrcName);
+
+
         return (INT_PTR)TRUE;
 
     case WM_COMMAND:
         switch (LOWORD(wParam))
         {
-        case IDC_SAVE:
+        case IDC_FINDSAMPLINGPAR:
+            hText = GetDlgItem(hDlg, IDC_MOTDISTx);
+            TextLength = GetWindowTextLengthA(hText)+1;
+            GetWindowText(hText, szBuffer, TextLength);
+            Value = atof(szBuffer);
+            if (!isNumber(szBuffer) || Value <0)
+            {
+                MessageBox(hDlg, TEXT("AUT dimension along x-axis is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                return 0;
+            }
+            else {
+                Dx = Value;
+            }
+            hText = GetDlgItem(hDlg, IDC_MOTDISTy);
+            TextLength = GetWindowTextLengthA(hText) + 1;
+            GetWindowText(hText, szBuffer, TextLength);
+            Value = atof(szBuffer);
+            if (!isNumber(szBuffer) || Value < 0)
+            {
+                MessageBox(hDlg, TEXT("AUT dimension along y-axis is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                return 0;
+            }
+            else {
+                Dy = Value;
+            }
+            hText = GetDlgItem(hDlg, IDC_THETAX);
+            TextLength = GetWindowTextLengthA(hText) + 1;
+            GetWindowText(hText, szBuffer, TextLength);
+            Value = atof(szBuffer);
+            if (!isNumber(szBuffer) || Value < 0)
+            {
+                MessageBox(hDlg, TEXT("theta dimension along x-axis is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                return 0;
+            }
+            else {
+                thetax = Value;
+            }
+            hText = GetDlgItem(hDlg, IDC_THETAY);
+            TextLength = GetWindowTextLengthA(hText) + 1;
+            GetWindowText(hText, szBuffer, TextLength);
+            Value = atof(szBuffer);
+            if (!isNumber(szBuffer) || Value < 0)
+            {
+                MessageBox(hDlg, TEXT("theta dimension along y-axis is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                return 0;
+            }
+            else {
+                thetay = Value;
+            }
+            hText = GetDlgItem(hDlg, IDC_Probex);
+            TextLength = GetWindowTextLengthA(hText) + 1;
+            GetWindowText(hText, szBuffer, TextLength);
+            Value = atof(szBuffer);
+            if (!isNumber(szBuffer) || Value < 0)
+            {
+                MessageBox(hDlg, TEXT("Probe dimension along x-axis is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                return 0;
+            }
+            else {
+                Probex = Value;
+            }
+            hText = GetDlgItem(hDlg, IDC_Probey);
+            TextLength = GetWindowTextLengthA(hText) + 1;
+            GetWindowText(hText, szBuffer, TextLength);
+            Value = atof(szBuffer);
+            if (!isNumber(szBuffer) || Value < 0)
+            {
+                MessageBox(hDlg, TEXT("Probe dimension along y-axis is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                return 0;
+            }
+            else {
+                Probey = Value;
+            }
+
+            hText = GetDlgItem(hDlg, IDC_AUTDIS);
+            TextLength = GetWindowTextLengthA(hText) + 1;
+            GetWindowText(hText, szBuffer, TextLength);
+            Value = atof(szBuffer);
+            if (!isNumber(szBuffer) || Value < 0)
+            {
+                MessageBox(hDlg, TEXT("Probe distance to AUT dimension is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                return 0;
+            }
+            else {
+                ProbetoAUTdis = Value;
+            }
+
+            a = Dx + px + 2 * zp * tan(thetax * pi / 180);
+            sprintf(szBuffer, "%.2lf", a);
+            SetDlgItemText(hDlg, IDC_SPANA, szBuffer);
+
+            b = Dy + py + 2 * zp * tan(thetay * pi / 180);
+            sprintf(szBuffer, "%.2lf", b);
+            SetDlgItemText(hDlg, IDC_SPANB, szBuffer);
+
+            if (FIXDELTA)
+            {
+                // 2) read number of points Mx and My
+
+                hText = GetDlgItem(hDlg, IDC_POINTSA);
+                TextLength = GetWindowTextLengthA(hText) + 1;
+                GetWindowText(hText, szBuffer, TextLength);
+                Value = atof(szBuffer);
+                if (!isNumber(szBuffer) || Value < 0)
+                {
+                    MessageBox(hDlg, TEXT("Number of points is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                    return 0;
+                }
+                else {
+                    Mx = Value;
+                }
+
+
+                hText = GetDlgItem(hDlg, IDC_POINTSB);
+                TextLength = GetWindowTextLengthA(hText) + 1;
+                GetWindowText(hText, szBuffer, TextLength);
+                Value = atof(szBuffer);
+                if (!isNumber(szBuffer) || Value < 0)
+                {
+                    MessageBox(hDlg, TEXT("Number of points is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                    return 0;
+                }
+                else {
+                    My = Value;
+                }
+
+
+                    dx = int(a / max(1, Mx - 1));
+                    sprintf(szBuffer, "%.2lf", dx);
+                    SetDlgItemText(hDlg, IDC_DELTAA, szBuffer);
+                // 
+                    dy = int(a / max(1, My - 1));
+                    sprintf(szBuffer, "%.2lf", dy);
+                    SetDlgItemText(hDlg, IDC_DELTAB, szBuffer);
+
+                    //EnableWindow(GetDlgItem(hDlg, IDC_DELTAA), false);
+                    //EnableWindow(GetDlgItem(hDlg, IDC_DELTAB), false);
+                    //EnableWindow(GetDlgItem(hDlg, IDC_FIXDELTA), false);
+                    //FIXDELTA = true;
+
+            }
+            else
+            {   // read dx and dy 
+
+                hText = GetDlgItem(hDlg, IDC_DELTAA);
+                TextLength = GetWindowTextLengthA(hText) + 1;
+                GetWindowText(hText, szBuffer, TextLength);
+                Value = atof(szBuffer);
+                if (!isNumber(szBuffer) || Value < 0)
+                {
+                    MessageBox(hDlg, TEXT("Delta 'a' is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                    return 0;
+                }
+                else {
+                    dx = Value;
+                }
+                hText = GetDlgItem(hDlg, IDC_DELTAB);
+                TextLength = GetWindowTextLengthA(hText) + 1;
+                GetWindowText(hText, szBuffer, TextLength);
+                Value = atof(szBuffer);
+                if (!isNumber(szBuffer) || Value < 0)
+                {
+                    MessageBox(hDlg, TEXT("Delta 'b' is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+                    return 0;
+                }
+                else {
+                    dy = Value;
+                }
+
+
+                // 5) find number of points and display thye values
+                Mx = 1 + int(0.5 + a / dx);
+                sprintf(szBuffer, "%.2lf", Mx);
+                SetDlgItemText(hDlg, IDC_POINTSA, szBuffer);
+                // 
+                My = 1 + int(0.5 + b / dy);
+                sprintf(szBuffer, "%.2lf", My);
+                SetDlgItemText(hDlg, IDC_POINTSB, szBuffer);
+
+                //EnableWindow(GetDlgItem(hDlg, IDC_DELTAA), false);
+                //EnableWindow(GetDlgItem(hDlg, IDC_DELTAB), false);
+                //EnableWindow(GetDlgItem(hDlg, IDC_FIXDELTA), false);
+                //FIXDELTA = true;
+
+            }
+         return false;
+        case IDC_FIXNUMBERPOINTS:
+
+            EnableWindow(GetDlgItem(hDlg, IDC_DELTAA), true);
+            EnableWindow(GetDlgItem(hDlg, IDC_DELTAB), true);
+            EnableWindow(GetDlgItem(hDlg, IDC_FIXDELTA), true);
+            FIXDELTA = false;
+
+            EnableWindow(GetDlgItem(hDlg, IDC_POINTSA), false);
+            EnableWindow(GetDlgItem(hDlg, IDC_POINTSB), false);
+            EnableWindow(GetDlgItem(hDlg, IDC_FIXNUMBERPOINTS), false);
+            return false;
+        case IDC_FIXDELTA:
+
+            EnableWindow(GetDlgItem(hDlg, IDC_DELTAA), false);
+            EnableWindow(GetDlgItem(hDlg, IDC_DELTAB), false);
+            EnableWindow(GetDlgItem(hDlg, IDC_FIXDELTA), false);
+            FIXDELTA = true;
+
+            EnableWindow(GetDlgItem(hDlg, IDC_POINTSA), true);
+            EnableWindow(GetDlgItem(hDlg, IDC_POINTSB), true);
+            EnableWindow(GetDlgItem(hDlg, IDC_FIXNUMBERPOINTS), true);
+
+            return false;
+        /*case IDC_MOTDISTx:
+            hText = GetDlgItem(hDlg, IDC_MOTDISTx);
+            GetWindowText(hText, szBuffer, 10);
+            Value = atof(szBuffer);
+            if (Value < 0)
+            {
+                sprintf(szBuffer, "%.2lf", Dx);
+                SetDlgItemText(hDlg, IDC_MOTDISTx, szBuffer);
+                MessageBox(hDlg, TEXT("Dx is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+            }
+            else {
+                Dx = Value;
+                a = Dx +px+ 2 * zp * tan(thetax * pi / 180);
+                sprintf(szBuffer, "%.2lf", a);
+                SetDlgItemText(hDlg, IDC_SPANA, szBuffer);
+
+                b = Dy + py + 2 * zp * tan(thetay * pi / 180);
+                sprintf(szBuffer, "%.2lf", b);
+                SetDlgItemText(hDlg, IDC_SPANB, szBuffer);
+               
+            }
+            return false;
+        case IDC_MOTDISTy:
+            hText = GetDlgItem(hDlg, IDC_MOTDISTy);
+            GetWindowText(hText, szBuffer, 10);
+            Value = atof(szBuffer);
+            if (Value < 0)
+            {
+                sprintf(szBuffer, "%.2lf", Dy);
+                SetDlgItemText(hDlg, IDC_MOTDISTy, szBuffer);
+                MessageBox(hDlg, TEXT("Dy is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+            }
+            else {
+                Dy = Value;
+                a = Dx + px + 2 * zp * tan(thetax * pi / 180);
+                sprintf(szBuffer, "%.2lf", a);
+                SetDlgItemText(hDlg, IDC_SPANA, szBuffer);
+
+                b = Dy + py + 2 * zp * tan(thetay * pi / 180);
+                sprintf(szBuffer, "%.2lf", b);
+                SetDlgItemText(hDlg, IDC_SPANB, szBuffer);
+            }
+            return false;
+        case IDC_THETAX:
+            hText = GetDlgItem(hDlg, IDC_THETAX);
+            GetWindowText(hText, szBuffer, 10);
+            Value = atof(szBuffer);
+            if (Value < 0)
+            {
+                sprintf(szBuffer, "%.2lf", thetax);
+                SetDlgItemText(hDlg, IDC_THETAX, szBuffer);
+                MessageBox(hDlg, TEXT("thetax is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+            }
+            else {
+                thetax = Value;
+                a = Dx + px + 2 * zp * tan(thetax * pi / 180);
+                sprintf(szBuffer, "%.2lf", a);
+                SetDlgItemText(hDlg, IDC_SPANA, szBuffer);
+
+                b = Dy + py + 2 * zp * tan(thetay * pi / 180);
+                sprintf(szBuffer, "%.2lf", b);
+                SetDlgItemText(hDlg, IDC_SPANB, szBuffer);
+            }
+            return false;
+        case IDC_THETAY:
+            hText = GetDlgItem(hDlg, IDC_THETAY);
+            GetWindowText(hText, szBuffer, 10);
+            Value = atof(szBuffer);
+            if (Value < 0)
+            {
+                sprintf(szBuffer, "%.2lf", thetay);
+                SetDlgItemText(hDlg, IDC_THETAY, szBuffer);
+                MessageBox(hDlg, TEXT("thetay is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+            }
+            else {
+                thetay = Value;
+                a = Dx + px + 2 * zp * tan(thetax * pi / 180);
+                sprintf(szBuffer, "%.2lf", a);
+                SetDlgItemText(hDlg, IDC_SPANA, szBuffer);
+
+                b = Dy + py + 2 * zp * tan(thetay * pi / 180);
+                sprintf(szBuffer, "%.2lf", b);
+                SetDlgItemText(hDlg, IDC_SPANB, szBuffer);
+            }
+            return FALSE;
+        case IDC_AUTDIS:
+            hText = GetDlgItem(hDlg, IDC_AUTDIS);
+            GetWindowText(hText, szBuffer, 10);
+            Value = atof(szBuffer);
+            if (Value < 0)
+            {
+                sprintf(szBuffer, "%.2lf", zp);
+                SetDlgItemText(hDlg, IDC_AUTDIS, szBuffer);
+                MessageBox(hDlg, TEXT("thetay is not a valid value!"), NULL, MB_ICONERROR | MB_OK);
+            }
+            else {
+                zp = Value;
+                a = Dx + px + 2 * zp * tan(thetax * pi / 180);
+                sprintf(szBuffer, "%.2lf", a);
+                SetDlgItemText(hDlg, IDC_SPANA, szBuffer);
+
+                b = Dy+py + 2 * zp * tan(thetay * pi / 180);
+                sprintf(szBuffer, "%.2lf", b);
+                SetDlgItemText(hDlg, IDC_SPANB, szBuffer);
+            }
+            return FALSE;*/
+          
+            
+
+
+
            /* SendDlgItemMessage(hDlg, IDC_POSPORTCOMBO, WM_GETTEXT, sizeof(szBuffer), (LPARAM)szBuffer);
             if (szBuffer[0])
                 strcpy(PosComPort, szBuffer);
@@ -558,7 +944,7 @@ INT_PTR CALLBACK STARTSETUPDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARA
             fp = fopen("hardware.txt", "w");
             fprintf(fp, "PosComPort= %s:\n", PosComPort);
             fclose(fp);*/
-            return FALSE;
+            //return FALSE;
         case IDOK:
             EndDialog(hDlg, TRUE);
             return FALSE;
@@ -571,3 +957,54 @@ INT_PTR CALLBACK STARTSETUPDialBox(HWND hDlg, UINT message, WPARAM wParam, LPARA
     }
     return (INT_PTR)FALSE;
 }
+
+BOOL InitUNITSCOMBOList(HWND hwndDlg, int indCombo)
+{
+    HWND hwndCombo;
+    DWORD dwIndex;
+    int index;
+    const char* ComboBoxItems[] = { "mm","cm","in",};
+
+    hwndCombo = GetDlgItem(hwndDlg, indCombo);
+
+    for (index = 0; index <= 3; index++)
+        dwIndex = SendMessage(hwndCombo, CB_ADDSTRING, 0, (LPARAM)(LPCSTR)ComboBoxItems[index]);
+    return TRUE;
+}
+
+// Function to check the string character by character
+BOOL isNumber(const char* str)
+{
+    int i, length, ndots = 0;
+
+    length = strlen(str);
+    for (i = 0; i < length; i++)
+        if (!isdigit(str[i]))
+        {
+            if (i == 0 & str[i] != '-')
+                return false;
+
+            if (i > 0 & str[i] == '.')
+                if (ndots == 0)
+                    ndots = 1;
+                else
+                    return false;
+            else
+                if (str[i] != '-')
+                    return false;
+        }
+    return true;
+}
+
+
+//case WM_TIMER:
+//    switch (wParam)
+//    {
+//    case TIMER_MILSEC1:
+//        [once - per - second processing]
+//        break;
+//    case TIMER_MILSEC2:
+//        [once - per - minute processing]
+//        break;
+//    }
+//    return 0;
